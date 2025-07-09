@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Ultimate Stock Market AI Agent - Interactive Dashboard
+StockSensei - Interactive Dashboard
 
 Comprehensive Streamlit app that integrates with all our AI models and prediction systems.
 Features live predictions, backtesting, portfolio analysis, and market insights.
 
-Author: AI Assistant  
+Author: Punit Kumar  
 Date: July 2025
 """
 
