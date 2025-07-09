@@ -407,7 +407,7 @@ def main():
     st.markdown(f'''
     <div style="text-align: center;">
         <span class="live-badge">🔴 LIVE</span>
-        <span class="live-badge">🤖 AI-Powered</span>
+        <span class="live-badge">SP49 Market Overview</span>
         <span class="live-badge">📊 Real-time Data</span>
         <span class="live-badge">⏰ {current_time}</span>
     </div>
