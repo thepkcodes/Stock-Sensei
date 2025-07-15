@@ -326,9 +326,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Contact
 
-- **Email**: your.email@example.com
-- **LinkedIn**: [Your Profile](https://linkedin.com/in/yourprofile)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/stock_market_ai_agent/issues)
+- **Email**: punitpalsam@gmail.com
+- **LinkedIn**: [Your Profile](https://www.linkedin.com/in/punit-kumar-cu2025/)
+- **Issues**: [GitHub Issues](https://github.com/thepkcodes/Stock-Sensei/issues)
 
 ---
 
