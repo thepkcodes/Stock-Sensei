@@ -465,8 +465,51 @@ def create_market_sentiment_gauge(avg_change, confidence):
         font=dict(color='#333333', size=16, family='Arial'),
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)'
-    )
     return fig
+
+
+@st.cache_data(ttl=300)
+def fetch_last_two_closes(symbol):
+    """Robustly fetch last two closes for an index/ETF and compute daily % change.
+    Falls back across yfinance APIs and longer periods to avoid empty frames.
+    Returns dict with keys: price, change; or None if unavailable.
+    """
+    try:
+        import yfinance as yf
+        # First try download API over a 7-day window to ensure enough sessions
+        df = yf.download(symbol, period="7d", interval="1d", auto_adjust=False, progress=False, threads=False)
+        if df is None or df.empty:
+            # Fallback to Ticker.history over 5 days
+            t = yf.Ticker(symbol)
+            h = t.history(period='5d', interval='1d')
+            h = h.dropna(subset=['Close']) if not h.empty else h
+            if h is None or h.empty or len(h) < 2:
+                return None
+            current_price = float(h['Close'].iloc[-1])
+            prev_price = float(h['Close'].iloc[-2])
+            change = ((current_price - prev_price) / prev_price) * 100
+            return {"price": current_price, "change": change}
+
+        # Handle typical single-ticker case
+        close = None
+        if 'Close' in df.columns:
+            close = df['Close']
+        else:
+            # Some versions may return MultiIndex columns; try to extract
+            try:
+                close = df[('Close')]
+            except Exception:
+                return None
+        close = close.dropna()
+        if len(close) < 2:
+            return None
+        current_price = float(close.iloc[-1])
+        prev_price = float(close.iloc[-2])
+        change = ((current_price - prev_price) / prev_price) * 100
+        return {"price": current_price, "change": change}
+    except Exception:
+        return None
+
 
 def main():
     """Main Streamlit application"""
@@ -708,7 +751,7 @@ def main():
         
         # Fetch market indices data
         try:
-            import yfinance as yf
+            import yfinance as yf  # keep import for environments relying on it elsewhere
             
             # Define major indices
             indices = {
@@ -718,25 +761,20 @@ def main():
                 '^RUT': 'Russell 2000'
             }
             
-            col1, col2, col3, col4 = st.columns(4)
-            cols = [col1, col2, col3, col4]
-            
+            cols = st.columns(len(indices))
             for i, (symbol, name) in enumerate(indices.items()):
-                ticker = yf.Ticker(symbol)
-                info = ticker.history(period='2d')
-                if len(info) >= 2:
-                    current_price = info['Close'].iloc[-1]
-                    prev_price = info['Close'].iloc[-2]
-                    change = ((current_price - prev_price) / prev_price) * 100
-                    
-                    with cols[i]:
-                        delta_color = "normal" if symbol != '^VIX' else "inverse"
+                data = fetch_last_two_closes(symbol)
+                with cols[i]:
+                    if data:
+                        delta_color = 'inverse' if symbol == '^VIX' else 'normal'
                         st.metric(
                             label=name,
-                            value=f"{current_price:,.2f}",
-                            delta=f"{change:.2f}%",
+                            value=f"{data['price']:.2f}",
+                            delta=f"{data['change']:.2f}%",
                             delta_color=delta_color
                         )
+                    else:
+                        st.metric(label=name, value='N/A', delta='N/A')
         except Exception as e:
             st.warning("Could not fetch market indices data")
         
@@ -744,28 +782,27 @@ def main():
         st.subheader("🎯 Sector Performance")
         try:
             sectors = {
-                'XLK': 'Technology',
-                'XLF': 'Financials', 
-                'XLV': 'Healthcare',
+                'XLB': 'Materials',
                 'XLE': 'Energy',
+                'XLF': 'Financials', 
                 'XLI': 'Industrials',
-                'XLY': 'Consumer Disc.',
+                'XLK': 'Technology',
                 'XLP': 'Consumer Staples',
-                'XLRE': 'Real Estate'
+                'XLU': 'Utilities',
+                'XLV': 'Healthcare',
+                'XLY': 'Consumer Disc.',
+                'XLRE': 'Real Estate',
+                'XLC': 'Communication Svcs'
             }
             
             sector_data = []
             for symbol, name in sectors.items():
-                ticker = yf.Ticker(symbol)
-                info = ticker.history(period='2d')
-                if len(info) >= 2:
-                    current_price = info['Close'].iloc[-1]
-                    prev_price = info['Close'].iloc[-2]
-                    change = ((current_price - prev_price) / prev_price) * 100
+                data = fetch_last_two_closes(symbol)
+                if data:
                     sector_data.append({
                         'Sector': name,
-                        'Change %': change,
-                        'Price': current_price
+                        'Change %': data['change'],
+                        'Price': data['price']
                     })
             
             if sector_data:
@@ -783,6 +820,8 @@ def main():
                     paper_bgcolor='rgba(0,0,0,0)'
                 )
                 st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Sector data unavailable")
         except:
             st.info("Sector data unavailable")
         
