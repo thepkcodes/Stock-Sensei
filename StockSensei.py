@@ -394,36 +394,42 @@ def create_prediction_visualization(predictions_data):
     
     return fig1, fig2
 
-def get_technical_indicators(ticker_symbol):
-    """Get technical indicators for a stock using Alpha Vantage or yfinance"""
+def get_technical_indicators_from_predictor(predictor, ticker_symbol):
+    """Get technical indicators using the same data source as the predictor (Alpha Vantage/yfinance)"""
     try:
-        import yfinance as yf
         import ta
         
-        # Try to fetch data from multiple sources
-        data = None
+        # Use the predictor's data fetching method to get consistent data
+        print(f"🔍 Getting technical indicators for {ticker_symbol} using predictor's data source...")
         
-        # First try yfinance (works better for technical analysis)
-        try:
-            ticker = yf.Ticker(ticker_symbol)
-            data = ticker.history(period="1y")
-            if not data.empty and len(data) >= 30:
-                print(f"✅ Technical analysis using yfinance data ({len(data)} records)")
-        except:
-            pass
+        # Fetch data using the same method as predictions
+        raw_data = predictor.fetch_live_data(ticker_symbol, period="1y")
         
-        # If yfinance fails, try shorter period
-        if data is None or data.empty or len(data) < 30:
-            try:
-                data = yf.Ticker(ticker_symbol).history(period="6mo")
-                if not data.empty and len(data) >= 20:
-                    print(f"✅ Technical analysis using 6mo data ({len(data)} records)")
-            except:
-                pass
-        
-        if data is None or data.empty or len(data) < 20:
-            print(f"⚠️ Insufficient data for {ticker_symbol} technical analysis")
+        if raw_data is None or raw_data.empty:
+            print(f"⚠️ No data available for {ticker_symbol} technical analysis")
             return None
+        
+        # Convert to the format expected by ta library
+        data = raw_data.copy()
+        
+        # Ensure we have the right column names (convert to title case if needed)
+        column_mapping = {
+            'close': 'Close',
+            'high': 'High', 
+            'low': 'Low',
+            'open': 'Open',
+            'volume': 'Volume'
+        }
+        
+        for old_name, new_name in column_mapping.items():
+            if old_name in data.columns and new_name not in data.columns:
+                data[new_name] = data[old_name]
+        
+        if len(data) < 20:
+            print(f"⚠️ Insufficient data for {ticker_symbol} technical analysis ({len(data)} records)")
+            return None
+        
+        print(f"✅ Technical analysis using {len(data)} records from predictor's data source")
             
         # Calculate RSI
         rsi = ta.momentum.RSIIndicator(close=data['Close'], window=14)
@@ -643,8 +649,8 @@ def main():
                     </div>
                     ''', unsafe_allow_html=True)
                     
-                    # Get technical indicators (reduce requirements for Alpha Vantage data)
-                    tech_indicators = get_technical_indicators(selected_ticker)
+                    # Get technical indicators using the same data source as predictions
+                    tech_indicators = get_technical_indicators_from_predictor(predictor, selected_ticker)
                     
                     # Additional metrics
                     if tech_indicators:
