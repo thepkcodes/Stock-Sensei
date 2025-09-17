@@ -3,8 +3,7 @@ headless = true
 port = 8501
 enableCORS = false
 
-[theme]
-base = "light"
-primaryColor = "#667eea"
-font = "sans serif"
+# No [theme] section here so the app follows the user's preference (or system theme
+# on newer Streamlit versions). To explicitly set a theme later, re-introduce a [theme]
+# block and set base = "light" | "dark" (or "auto" if supported by your Streamlit version).
 
