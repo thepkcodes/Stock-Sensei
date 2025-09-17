@@ -515,9 +515,8 @@ def fetch_last_two_closes(symbol):
 def main():
     """Main Streamlit application"""
     
-    # Header - fallback to regular title if custom CSS fails
-    st.title("🚀 StockSensei")
-    st.markdown('<h1 class="main-header" style="display:none;">🚀 StockSensei</h1>', unsafe_allow_html=True)
+    # Header with original gradient styling
+    st.markdown('<h1 class="main-header">🚀 StockSensei</h1>', unsafe_allow_html=True)
     
     # Live indicator
     current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
