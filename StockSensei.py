@@ -395,16 +395,34 @@ def create_prediction_visualization(predictions_data):
     return fig1, fig2
 
 def get_technical_indicators(ticker_symbol):
-    """Get technical indicators for a stock"""
+    """Get technical indicators for a stock using Alpha Vantage or yfinance"""
     try:
         import yfinance as yf
         import ta
         
-        # Fetch data
-        ticker = yf.Ticker(ticker_symbol)
-        data = ticker.history(period="1y")
+        # Try to fetch data from multiple sources
+        data = None
         
-        if len(data) < 50:
+        # First try yfinance (works better for technical analysis)
+        try:
+            ticker = yf.Ticker(ticker_symbol)
+            data = ticker.history(period="1y")
+            if not data.empty and len(data) >= 30:
+                print(f"✅ Technical analysis using yfinance data ({len(data)} records)")
+        except:
+            pass
+        
+        # If yfinance fails, try shorter period
+        if data is None or data.empty or len(data) < 30:
+            try:
+                data = yf.Ticker(ticker_symbol).history(period="6mo")
+                if not data.empty and len(data) >= 20:
+                    print(f"✅ Technical analysis using 6mo data ({len(data)} records)")
+            except:
+                pass
+        
+        if data is None or data.empty or len(data) < 20:
+            print(f"⚠️ Insufficient data for {ticker_symbol} technical analysis")
             return None
             
         # Calculate RSI
@@ -528,16 +546,13 @@ def fetch_last_two_closes(symbol):
 def main():
     """Main Streamlit application"""
     
-    # Header with gradient styling that works in both light and dark modes
+    # Header with bright colors that work in both light and dark themes
     st.markdown('''
     <h1 style="
         font-size: 3.5rem;
         font-weight: bold;
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        color: #667eea;
+        color: #00D4AA;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
         text-align: center;
         margin-bottom: 2rem;
     ">🚀 StockSensei</h1>
@@ -628,7 +643,7 @@ def main():
                     </div>
                     ''', unsafe_allow_html=True)
                     
-                    # Get technical indicators
+                    # Get technical indicators (reduce requirements for Alpha Vantage data)
                     tech_indicators = get_technical_indicators(selected_ticker)
                     
                     # Additional metrics
