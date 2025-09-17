@@ -55,16 +55,46 @@ class LiveMarketPredictor:
             return False
     
     def fetch_live_data(self, ticker: str, period: str = "1y") -> pd.DataFrame:
-        """Fetch live market data from Yahoo Finance"""
+        """Fetch live market data from Yahoo Finance with multiple fallbacks"""
         try:
             print(f"📡 Fetching live data for {ticker}...")
             
-            # Fetch data from Yahoo Finance
-            stock = yf.Ticker(ticker)
-            data = stock.history(period=period)
+            # Try multiple approaches for yfinance
+            data = None
             
-            if data.empty:
-                raise ValueError(f"No data found for ticker {ticker}")
+            # Method 1: Direct download
+            try:
+                data = yf.download(ticker, period=period, progress=False, threads=False)
+                if not data.empty and len(data) > 20:
+                    data = data.reset_index()
+                    print(f"✅ Downloaded {len(data)} records via yf.download")
+            except:
+                pass
+            
+            # Method 2: Ticker.history fallback
+            if data is None or data.empty:
+                stock = yf.Ticker(ticker)
+                data = stock.history(period=period)
+                if not data.empty:
+                    data = data.reset_index()
+                    print(f"✅ Fetched {len(data)} records via Ticker.history")
+            
+            # Method 3: Shorter period fallback
+            if data is None or data.empty or len(data) < 20:
+                periods_to_try = ['6mo', '3mo', '1mo'] if period == '1y' else ['1mo', '2mo']
+                for fallback_period in periods_to_try:
+                    try:
+                        stock = yf.Ticker(ticker)
+                        data = stock.history(period=fallback_period)
+                        if not data.empty and len(data) > 10:
+                            data = data.reset_index()
+                            print(f"✅ Fallback: {len(data)} records with period={fallback_period}")
+                            break
+                    except:
+                        continue
+            
+            if data is None or data.empty:
+                raise ValueError(f"No data available for {ticker} after trying multiple methods")
             
             # Reset index to get Date as a column
             data.reset_index(inplace=True)
