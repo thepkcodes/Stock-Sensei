@@ -114,9 +114,10 @@ class LiveMarketPredictor:
                     'Volume': [np.random.randint(1000000, 10000000) for _ in prices]
                 })
                 print(f"🎭 Demo mode: Generated {len(data)} synthetic records for {ticker}")
-            
-            # Reset index to get Date as a column
-            data.reset_index(inplace=True)
+            else:
+                # Only reset index if we got data from yfinance (not demo data)
+                if 'Date' not in data.columns:
+                    data = data.reset_index()
             
             # Rename columns to match our training data format
             data.columns = [col.lower().replace(' ', '_') for col in data.columns]

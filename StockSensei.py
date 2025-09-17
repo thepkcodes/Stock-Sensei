@@ -59,8 +59,21 @@ st.markdown("""
         background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
+        background-clip: text;
+        color: transparent;
         text-align: center;
         margin-bottom: 2rem;
+        /* Fallback for browsers that don't support background-clip */
+        color: #667eea;
+    }
+    /* Dark mode fallback */
+    @media (prefers-color-scheme: dark) {
+        .main-header {
+            background: linear-gradient(90deg, #8da2ff 0%, #a67ec4 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            color: #8da2ff;
+        }
     }
     .live-badge {
         background: linear-gradient(90deg, #ff6b6b, #ee5a52);
@@ -515,8 +528,20 @@ def fetch_last_two_closes(symbol):
 def main():
     """Main Streamlit application"""
     
-    # Header with original gradient styling
-    st.markdown('<h1 class="main-header">🚀 StockSensei</h1>', unsafe_allow_html=True)
+    # Header with gradient styling that works in both light and dark modes
+    st.markdown('''
+    <h1 style="
+        font-size: 3.5rem;
+        font-weight: bold;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        color: #667eea;
+        text-align: center;
+        margin-bottom: 2rem;
+    ">🚀 StockSensei</h1>
+    ''', unsafe_allow_html=True)
     
     # Live indicator
     current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
