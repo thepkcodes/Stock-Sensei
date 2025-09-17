@@ -21,6 +21,7 @@ import sys
 import os
 import json
 import time
+import requests
 
 # Add src directory to path
 sys.path.append('src')
@@ -175,11 +176,67 @@ if 'error_messages' not in st.session_state:
 @st.cache_resource
 @handle_error
 def load_predictor():
-    """Load the live market predictor"""
+    """Load the live market predictor with optional secrets/env override and safe fallback"""
     with LoadingState("Loading AI prediction model..."):
+        # Helpers scoped to this loader to avoid global changes
+        def get_secret_or_env(key, default=None):
+            # Environment variables take precedence
+            val = os.environ.get(key)
+            if val not in (None, ""):
+                return val
+            # Then try Streamlit secrets (compatible with older Streamlit versions)
+            try:
+                if key in st.secrets:
+                    return st.secrets[key]
+            except Exception:
+                pass
+            return default
+        
+        def ensure_file(path, url=None, description="file"):
+            try:
+                if path and os.path.exists(path):
+                    return True
+                if url and path:
+                    os.makedirs(os.path.dirname(path), exist_ok=True)
+                    resp = requests.get(url, stream=True, timeout=30)
+                    resp.raise_for_status()
+                    with open(path, "wb") as f:
+                        for chunk in resp.iter_content(chunk_size=8192):
+                            if chunk:
+                                f.write(chunk)
+                    return os.path.exists(path)
+                return False
+            except Exception as e:
+                st.warning(f"⚠️ Could not fetch {description}: {e}")
+                return False
+        
+        # Defaults preserved
+        default_model_path = 'models/random_forest_model.pkl'
+        default_feature_path = 'models/feature_names.pkl'
+        
+        # Resolve from secrets/env or use defaults
+        model_path = get_secret_or_env('MODEL_PATH', default_model_path)
+        feature_names_path = get_secret_or_env('FEATURE_NAMES_PATH', default_feature_path)
+        model_url = get_secret_or_env('MODEL_URL', None)
+        feature_names_url = get_secret_or_env('FEATURE_NAMES_URL', None)
+        
+        # Ensure feature names file exists (attempt download if URL provided)
+        if not ensure_file(feature_names_path, feature_names_url, "feature names file"):
+            st.info("Feature names file not found; will proceed if the model can load without it.")
+        
+        # Ensure model file exists (attempt download if URL provided)
+        have_model = ensure_file(model_path, model_url, "model file")
+        
+        # Fallback to lightweight model if RF missing and no explicit override was given
+        if not have_model and model_path == default_model_path:
+            fallback_model = 'models/xgboost_model.pkl'
+            if os.path.exists(fallback_model):
+                st.info("Default Random Forest model not found; falling back to XGBoost model.")
+                model_path = fallback_model
+        
         predictor = LiveMarketPredictor(
-            model_path='models/random_forest_model.pkl',
-            feature_names_path='models/feature_names.pkl'
+            model_path=model_path,
+            feature_names_path=feature_names_path
         )
         return predictor
 
