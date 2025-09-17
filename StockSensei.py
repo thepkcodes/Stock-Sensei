@@ -184,12 +184,27 @@ def load_predictor():
             val = os.environ.get(key)
             if val not in (None, ""):
                 return val
-            # Then try Streamlit secrets (compatible with older Streamlit versions)
+
+            # Only touch st.secrets if a secrets.toml exists in a known location
             try:
-                if key in st.secrets:
-                    return st.secrets[key]
+                user_secrets = os.path.join(os.path.expanduser("~"), ".streamlit", "secrets.toml")
+                app_dir = os.path.dirname(os.path.abspath(__file__))
+                local_secrets = os.path.join(app_dir, ".streamlit", "secrets.toml")
+                secrets_available = os.path.exists(user_secrets) or os.path.exists(local_secrets)
             except Exception:
-                pass
+                secrets_available = False
+
+            if secrets_available:
+                try:
+                    # Prefer dict-style get if available to avoid KeyError
+                    if hasattr(st.secrets, "get"):
+                        return st.secrets.get(key, default)
+                    # Fallback to membership + indexing
+                    if key in st.secrets:
+                        return st.secrets[key]
+                except Exception:
+                    pass
+
             return default
         
         def ensure_file(path, url=None, description="file"):
