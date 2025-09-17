@@ -26,17 +26,8 @@ import requests
 import ta
 from typing import Dict, List, Tuple, Optional
 import json
-import os
-import time
 
 warnings.filterwarnings('ignore')
-
-# Try to import Alpha Vantage (fallback gracefully if not available)
-try:
-    from alpha_vantage.timeseries import TimeSeries
-    ALPHA_VANTAGE_AVAILABLE = True
-except ImportError:
-    ALPHA_VANTAGE_AVAILABLE = False
 
 class LiveMarketPredictor:
     """Live market data fetcher and predictor"""
@@ -46,39 +37,7 @@ class LiveMarketPredictor:
         self.feature_names_path = feature_names_path
         self.model = None
         self.feature_names = None
-        
-        # Initialize Alpha Vantage client if API key is available
-        self.alpha_vantage_key = self.get_alpha_vantage_key()
-        self.alpha_vantage_client = None
-        if self.alpha_vantage_key and ALPHA_VANTAGE_AVAILABLE:
-            try:
-                self.alpha_vantage_client = TimeSeries(key=self.alpha_vantage_key, output_format='pandas')
-                print("✅ Alpha Vantage client initialized for reliable data fetching")
-            except Exception as e:
-                print(f"⚠️ Alpha Vantage initialization failed: {e}")
-        elif not ALPHA_VANTAGE_AVAILABLE:
-            print("⚠️ alpha-vantage package not installed, using yfinance only")
-        else:
-            print("⚠️ No Alpha Vantage API key found, using yfinance only")
-        
         self.load_model()
-        
-    def get_alpha_vantage_key(self):
-        """Get Alpha Vantage API key from environment or secrets"""
-        # Try environment variable first
-        key = os.environ.get('ALPHA_VANTAGE_API_KEY')
-        if key:
-            return key
-        
-        # Try Streamlit secrets
-        try:
-            import streamlit as st
-            if hasattr(st, 'secrets') and 'ALPHA_VANTAGE_API_KEY' in st.secrets:
-                return st.secrets['ALPHA_VANTAGE_API_KEY']
-        except:
-            pass
-        
-        return None
         
     def load_model(self):
         """Load the trained model and feature names"""
@@ -94,115 +53,20 @@ class LiveMarketPredictor:
         except Exception as e:
             print(f"❌ Error loading model: {e}")
             return False
-    
-    def fetch_from_alpha_vantage(self, ticker: str) -> pd.DataFrame:
-        """Fetch data from Alpha Vantage API"""
-        try:
-            if not self.alpha_vantage_client:
-                return pd.DataFrame()
-            
-            print(f"🚀 Fetching {ticker} from Alpha Vantage...")
-            
-            # Get daily data (Alpha Vantage returns last 100 trading days by default)
-            data, meta_data = self.alpha_vantage_client.get_daily(symbol=ticker, outputsize='full')
-            
-            if data is None or data.empty:
-                print(f"⚠️ No Alpha Vantage data for {ticker}")
-                return pd.DataFrame()
-            
-            # Alpha Vantage returns data in reverse chronological order, so sort by date
-            data = data.sort_index()
-            
-            # Take last year of data (approximately 252 trading days)
-            data = data.tail(252)
-            
-            # Reset index to get Date as a column
-            data = data.reset_index()
-            
-            # Rename columns to match our expected format
-            data.columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
-            
-            print(f"✅ Alpha Vantage: {len(data)} records for {ticker}")
-            return data
-            
-        except Exception as e:
-            print(f"⚠️ Alpha Vantage error for {ticker}: {e}")
-            return pd.DataFrame()
-    
     def fetch_live_data(self, ticker: str, period: str = "1y") -> pd.DataFrame:
-        """Fetch live market data with Alpha Vantage primary + yfinance fallback"""
+        """Fetch live market data from Yahoo Finance"""
         try:
             print(f"📡 Fetching live data for {ticker}...")
             
-            data = None
+            # Fetch data from Yahoo Finance
+            stock = yf.Ticker(ticker)
+            data = stock.history(period=period)
             
-            # Method 1: Alpha Vantage (if available and API key present)
-            if self.alpha_vantage_client:
-                data = self.fetch_from_alpha_vantage(ticker)
-                if not data.empty and len(data) > 20:
-                    print(f"✅ Using Alpha Vantage data: {len(data)} records")
-                    # Add rate limiting for Alpha Vantage (5 calls per minute)
-                    time.sleep(12)  # Wait 12 seconds between calls to stay under limit
+            if data.empty:
+                raise ValueError(f"No data found for ticker {ticker}")
             
-            # Method 2: yfinance fallback if Alpha Vantage failed or unavailable
-            if data is None or data.empty:
-                print(f"🔄 Falling back to yfinance for {ticker}...")
-                
-                # Try yfinance download
-                try:
-                    data = yf.download(ticker, period=period, progress=False, threads=False)
-                    if not data.empty and len(data) > 20:
-                        data = data.reset_index()
-                        print(f"✅ yfinance download: {len(data)} records")
-                except:
-                    pass
-                
-                # Try Ticker.history if download failed
-                if data is None or data.empty:
-                    try:
-                        stock = yf.Ticker(ticker)
-                        data = stock.history(period=period)
-                        if not data.empty:
-                            data = data.reset_index()
-                            print(f"✅ yfinance history: {len(data)} records")
-                    except:
-                        pass
-                
-                # Try shorter periods if still failing
-                if data is None or data.empty or len(data) < 20:
-                    periods_to_try = ['6mo', '3mo', '1mo']
-                    for fallback_period in periods_to_try:
-                        try:
-                            stock = yf.Ticker(ticker)
-                            data = stock.history(period=fallback_period)
-                            if not data.empty and len(data) > 10:
-                                data = data.reset_index()
-                                print(f"✅ yfinance {fallback_period}: {len(data)} records")
-                                break
-                        except:
-                            continue
-            
-            # Method 3: Demo data only if everything else fails
-            if data is None or data.empty:
-                print(f"⚠️ All real data sources failed - generating demo data for {ticker}")
-                import datetime
-                dates = pd.date_range(end=datetime.datetime.now(), periods=252)
-                np.random.seed(hash(ticker) % 1000)
-                base_price = 150 + (hash(ticker) % 200)
-                returns = np.random.normal(0.001, 0.02, 252)
-                prices = [base_price]
-                for ret in returns[1:]:
-                    prices.append(prices[-1] * (1 + ret))
-                
-                data = pd.DataFrame({
-                    'Date': dates,
-                    'Open': prices,
-                    'High': [p * (1 + abs(np.random.normal(0, 0.01))) for p in prices],
-                    'Low': [p * (1 - abs(np.random.normal(0, 0.01))) for p in prices],
-                    'Close': prices,
-                    'Volume': [np.random.randint(1000000, 10000000) for _ in prices]
-                })
-                print(f"🎭 Demo mode: {len(data)} synthetic records")
+            # Reset index to get Date as a column
+            data.reset_index(inplace=True)
             
             # Rename columns to match our training data format
             data.columns = [col.lower().replace(' ', '_') for col in data.columns]

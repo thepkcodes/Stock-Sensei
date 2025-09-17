@@ -189,82 +189,11 @@ if 'error_messages' not in st.session_state:
 @st.cache_resource
 @handle_error
 def load_predictor():
-    """Load the live market predictor with optional secrets/env override and safe fallback"""
+    """Load the live market predictor"""
     with LoadingState("Loading AI prediction model..."):
-        # Helpers scoped to this loader to avoid global changes
-        def get_secret_or_env(key, default=None):
-            # Environment variables take precedence
-            val = os.environ.get(key)
-            if val not in (None, ""):
-                return val
-
-            # Only touch st.secrets if a secrets.toml exists in a known location
-            try:
-                user_secrets = os.path.join(os.path.expanduser("~"), ".streamlit", "secrets.toml")
-                app_dir = os.path.dirname(os.path.abspath(__file__))
-                local_secrets = os.path.join(app_dir, ".streamlit", "secrets.toml")
-                secrets_available = os.path.exists(user_secrets) or os.path.exists(local_secrets)
-            except Exception:
-                secrets_available = False
-
-            if secrets_available:
-                try:
-                    # Prefer dict-style get if available to avoid KeyError
-                    if hasattr(st.secrets, "get"):
-                        return st.secrets.get(key, default)
-                    # Fallback to membership + indexing
-                    if key in st.secrets:
-                        return st.secrets[key]
-                except Exception:
-                    pass
-
-            return default
-        
-        def ensure_file(path, url=None, description="file"):
-            try:
-                if path and os.path.exists(path):
-                    return True
-                if url and path:
-                    os.makedirs(os.path.dirname(path), exist_ok=True)
-                    resp = requests.get(url, stream=True, timeout=30)
-                    resp.raise_for_status()
-                    with open(path, "wb") as f:
-                        for chunk in resp.iter_content(chunk_size=8192):
-                            if chunk:
-                                f.write(chunk)
-                    return os.path.exists(path)
-                return False
-            except Exception as e:
-                st.warning(f"⚠️ Could not fetch {description}: {e}")
-                return False
-        
-        # Defaults preserved
-        default_model_path = 'models/random_forest_model.pkl'
-        default_feature_path = 'models/feature_names.pkl'
-        
-        # Resolve from secrets/env or use defaults
-        model_path = get_secret_or_env('MODEL_PATH', default_model_path)
-        feature_names_path = get_secret_or_env('FEATURE_NAMES_PATH', default_feature_path)
-        model_url = get_secret_or_env('MODEL_URL', None)
-        feature_names_url = get_secret_or_env('FEATURE_NAMES_URL', None)
-        
-        # Ensure feature names file exists (attempt download if URL provided)
-        if not ensure_file(feature_names_path, feature_names_url, "feature names file"):
-            st.info("Feature names file not found; will proceed if the model can load without it.")
-        
-        # Ensure model file exists (attempt download if URL provided)
-        have_model = ensure_file(model_path, model_url, "model file")
-        
-        # Fallback to lightweight model if RF missing and no explicit override was given
-        if not have_model and model_path == default_model_path:
-            fallback_model = 'models/xgboost_model.pkl'
-            if os.path.exists(fallback_model):
-                st.info("Default Random Forest model not found; falling back to XGBoost model.")
-                model_path = fallback_model
-        
         predictor = LiveMarketPredictor(
-            model_path=model_path,
-            feature_names_path=feature_names_path
+            model_path='models/random_forest_model.pkl',
+            feature_names_path='models/feature_names.pkl'
         )
         return predictor
 
@@ -394,42 +323,18 @@ def create_prediction_visualization(predictions_data):
     
     return fig1, fig2
 
-def get_technical_indicators_from_predictor(predictor, ticker_symbol):
-    """Get technical indicators using the same data source as the predictor (Alpha Vantage/yfinance)"""
+def get_technical_indicators(ticker_symbol):
+    """Get technical indicators for a stock"""
     try:
+        import yfinance as yf
         import ta
         
-        # Use the predictor's data fetching method to get consistent data
-        print(f"🔍 Getting technical indicators for {ticker_symbol} using predictor's data source...")
+        # Fetch data
+        ticker = yf.Ticker(ticker_symbol)
+        data = ticker.history(period="1y")
         
-        # Fetch data using the same method as predictions
-        raw_data = predictor.fetch_live_data(ticker_symbol, period="1y")
-        
-        if raw_data is None or raw_data.empty:
-            print(f"⚠️ No data available for {ticker_symbol} technical analysis")
+        if len(data) < 50:
             return None
-        
-        # Convert to the format expected by ta library
-        data = raw_data.copy()
-        
-        # Ensure we have the right column names (convert to title case if needed)
-        column_mapping = {
-            'close': 'Close',
-            'high': 'High', 
-            'low': 'Low',
-            'open': 'Open',
-            'volume': 'Volume'
-        }
-        
-        for old_name, new_name in column_mapping.items():
-            if old_name in data.columns and new_name not in data.columns:
-                data[new_name] = data[old_name]
-        
-        if len(data) < 20:
-            print(f"⚠️ Insufficient data for {ticker_symbol} technical analysis ({len(data)} records)")
-            return None
-        
-        print(f"✅ Technical analysis using {len(data)} records from predictor's data source")
             
         # Calculate RSI
         rsi = ta.momentum.RSIIndicator(close=data['Close'], window=14)
@@ -552,17 +457,8 @@ def fetch_last_two_closes(symbol):
 def main():
     """Main Streamlit application"""
     
-    # Header with bright colors that work in both light and dark themes
-    st.markdown('''
-    <h1 style="
-        font-size: 3.5rem;
-        font-weight: bold;
-        color: #00D4AA;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-        text-align: center;
-        margin-bottom: 2rem;
-    ">🚀 StockSensei</h1>
-    ''', unsafe_allow_html=True)
+    # Header
+    st.markdown('<h1 class="main-header">🚀 StockSensei</h1>', unsafe_allow_html=True)
     
     # Live indicator
     current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -649,8 +545,8 @@ def main():
                     </div>
                     ''', unsafe_allow_html=True)
                     
-                    # Get technical indicators using the same data source as predictions
-                    tech_indicators = get_technical_indicators_from_predictor(predictor, selected_ticker)
+                    # Get technical indicators
+                    tech_indicators = get_technical_indicators(selected_ticker)
                     
                     # Additional metrics
                     if tech_indicators:
