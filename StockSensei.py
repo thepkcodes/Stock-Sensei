@@ -465,6 +465,7 @@ def create_market_sentiment_gauge(avg_change, confidence):
         font=dict(color='#333333', size=16, family='Arial'),
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)'
+    )
     return fig
 
 
